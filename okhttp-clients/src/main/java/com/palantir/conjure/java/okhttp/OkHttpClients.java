@@ -54,8 +54,7 @@ public final class OkHttpClients {
     private static final boolean RANDOMIZE = true;
     private static final boolean RESHUFFLE = true;
 
-    @VisibleForTesting
-    static final int NUM_SCHEDULING_THREADS = 5;
+    @VisibleForTesting static final int NUM_SCHEDULING_THREADS = 5;
 
     private static final ThreadFactory executionThreads = new ThreadFactoryBuilder()
             .setUncaughtExceptionHandler((thread, uncaughtException) -> log.error(
@@ -71,17 +70,15 @@ public final class OkHttpClients {
     /**
      * The {@link ExecutorService} used for the {@link Dispatcher}s of all OkHttp clients created through this class.
      * Similar to OkHttp's default, but with two modifications:
+     *
      * <ol>
-     *     <li>A logging uncaught exception handler</li>
-     *     <li>
-     *         Daemon threads: active request will not block JVM shutdown <b>unless</b> another non-daemon
-     *         thread blocks waiting for the result. Most of our usage falls into this category. This allows
-     *         JVM shutdown to occur cleanly without waiting a full minute after the last request completes.
-     *     </li>
+     *   <li>A logging uncaught exception handler
+     *   <li>Daemon threads: active request will not block JVM shutdown <b>unless</b> another non-daemon thread blocks
+     *       waiting for the result. Most of our usage falls into this category. This allows JVM shutdown to occur
+     *       cleanly without waiting a full minute after the last request completes.
      * </ol>
      */
-    private static final ExecutorService executionExecutor =
-            Executors.newCachedThreadPool(executionThreads);
+    private static final ExecutorService executionExecutor = Executors.newCachedThreadPool(executionThreads);
 
     /** Shared dispatcher with static executor service. */
     private static final Dispatcher dispatcher;
@@ -101,24 +98,22 @@ public final class OkHttpClients {
         dispatcherMetricSet = new DispatcherMetricSet(dispatcher, connectionPool);
     }
 
-    /**
-     * The {@link ScheduledExecutorService} used for recovering leaked limits.
-     */
-    private static final Supplier<ScheduledExecutorService> limitReviver = Suppliers.memoize(() -> Tracers.wrap(
-            Executors.newSingleThreadScheduledExecutor(
+    /** The {@link ScheduledExecutorService} used for recovering leaked limits. */
+    private static final Supplier<ScheduledExecutorService> limitReviver = Suppliers.memoize(
+            () -> Tracers.wrap(Executors.newSingleThreadScheduledExecutor(
                     Util.threadFactory("conjure-java-runtime/leaked limit reviver", true))));
 
     /**
      * The {@link ScheduledExecutorService} used for scheduling call retries. This thread pool is distinct from OkHttp's
      * internal thread pool and from the thread pool used by {@link #executionExecutor}.
-     * <p>
-     * Note: In contrast to the {@link java.util.concurrent.ThreadPoolExecutor} used by OkHttp's {@link
+     *
+     * <p>Note: In contrast to the {@link java.util.concurrent.ThreadPoolExecutor} used by OkHttp's {@link
      * #executionExecutor}, {@code corePoolSize} must not be zero for a {@link ScheduledThreadPoolExecutor}, see its
      * Javadoc. Since this executor will never hit zero threads, it must use daemon threads.
      */
-    private static final Supplier<ScheduledExecutorService> schedulingExecutor =
-            Suppliers.memoize(() -> Tracers.wrap(Executors.newScheduledThreadPool(NUM_SCHEDULING_THREADS,
-                    Util.threadFactory("conjure-java-runtime/OkHttp Scheduler", true))));
+    private static final Supplier<ScheduledExecutorService> schedulingExecutor = Suppliers.memoize(
+            () -> Tracers.wrap(Executors.newScheduledThreadPool(
+                    NUM_SCHEDULING_THREADS, Util.threadFactory("conjure-java-runtime/OkHttp Scheduler", true))));
 
     private OkHttpClients() {}
 
@@ -127,10 +122,7 @@ public final class OkHttpClients {
      * ClientConfiguration#uris URIs} are initialized in random order.
      */
     public static OkHttpClient create(
-            ClientConfiguration config,
-            UserAgent userAgent,
-            HostEventsSink hostEventsSink,
-            Class<?> serviceClass) {
+            ClientConfiguration config, UserAgent userAgent, HostEventsSink hostEventsSink, Class<?> serviceClass) {
         boolean reshuffle =
                 !config.nodeSelectionStrategy().equals(NodeSelectionStrategy.PIN_UNTIL_ERROR_WITHOUT_RESHUFFLE);
         return createInternal(config, userAgent, hostEventsSink, serviceClass, RANDOMIZE, reshuffle);
@@ -138,10 +130,7 @@ public final class OkHttpClients {
 
     @VisibleForTesting
     static RemotingOkHttpClient withStableUris(
-            ClientConfiguration config,
-            UserAgent userAgent,
-            HostEventsSink hostEventsSink,
-            Class<?> serviceClass) {
+            ClientConfiguration config, UserAgent userAgent, HostEventsSink hostEventsSink, Class<?> serviceClass) {
         return createInternal(config, userAgent, hostEventsSink, serviceClass, !RANDOMIZE, !RESHUFFLE);
     }
 
@@ -154,10 +143,7 @@ public final class OkHttpClients {
             boolean reshuffle) {
         boolean enableClientQoS = shouldEnableQos(config.clientQoS());
         ConcurrencyLimiters concurrencyLimiters = new ConcurrencyLimiters(
-                limitReviver.get(),
-                config.taggedMetricRegistry(),
-                serviceClass,
-                enableClientQoS);
+                limitReviver.get(), config.taggedMetricRegistry(), serviceClass, enableClientQoS);
 
         OkHttpClient.Builder client = new OkHttpClient.Builder();
         client.addInterceptor(CatchThrowableInterceptor.INSTANCE);
@@ -185,10 +171,8 @@ public final class OkHttpClients {
         if (enableClientQoS) {
             client.addInterceptor(new ConcurrencyLimitingInterceptor());
         }
-        client.addInterceptor(InstrumentedInterceptor.create(
-                config.taggedMetricRegistry(),
-                hostEventsSink,
-                serviceClass));
+        client.addInterceptor(
+                InstrumentedInterceptor.create(config.taggedMetricRegistry(), hostEventsSink, serviceClass));
         client.addInterceptor(OkhttpTraceInterceptor.INSTANCE);
         client.addInterceptor(UserAgentInterceptor.of(augmentUserAgent(userAgent, serviceClass)));
 
@@ -204,10 +188,8 @@ public final class OkHttpClients {
         if (config.proxyCredentials().isPresent()) {
             BasicCredentials basicCreds = config.proxyCredentials().get();
             final String credentials = Credentials.basic(basicCreds.username(), basicCreds.password());
-            client.proxyAuthenticator((route, response) -> response.request()
-                    .newBuilder()
-                    .header(HttpHeaders.PROXY_AUTHORIZATION, credentials)
-                    .build());
+            client.proxyAuthenticator((route, response) ->
+                    response.request().newBuilder().header(HttpHeaders.PROXY_AUTHORIZATION, credentials).build());
         }
 
         // cipher setup
@@ -220,10 +202,7 @@ public final class OkHttpClients {
 
         // global metrics (addMetrics is idempotent, so this works even when multiple clients are created)
         config.taggedMetricRegistry()
-                .addMetrics(
-                        "from",
-                        DispatcherMetricSet.class.getSimpleName(),
-                        dispatcherMetricSet);
+                .addMetrics("from", DispatcherMetricSet.class.getSimpleName(), dispatcherMetricSet);
 
         return new RemotingOkHttpClient(
                 client.build(),
@@ -246,27 +225,25 @@ public final class OkHttpClients {
                 return false;
         }
 
-        throw new SafeIllegalStateException("Encountered unknown client QoS configuration",
-                SafeArg.of("ClientQoS", clientQoS));
+        throw new SafeIllegalStateException(
+                "Encountered unknown client QoS configuration", SafeArg.of("ClientQoS", clientQoS));
     }
 
     /**
      * Adds informational {@link Agent}s to the given {@link UserAgent}, one for the conjure-java-runtime library and
-     * one for the given service class. Version strings are extracted from the packages'
-     * {@link Package#getImplementationVersion implementation version}, defaulting to 0.0.0 if no version can be found.
+     * one for the given service class. Version strings are extracted from the packages' {@link
+     * Package#getImplementationVersion implementation version}, defaulting to 0.0.0 if no version can be found.
      */
     private static UserAgent augmentUserAgent(UserAgent agent, Class<?> serviceClass) {
         UserAgent augmentedAgent = agent;
 
         String maybeServiceVersion = serviceClass.getPackage().getImplementationVersion();
         augmentedAgent = augmentedAgent.addAgent(UserAgent.Agent.of(
-                serviceClass.getSimpleName(),
-                maybeServiceVersion != null ? maybeServiceVersion : "0.0.0"));
+                serviceClass.getSimpleName(), maybeServiceVersion != null ? maybeServiceVersion : "0.0.0"));
 
         String maybeRemotingVersion = OkHttpClients.class.getPackage().getImplementationVersion();
         augmentedAgent = augmentedAgent.addAgent(UserAgent.Agent.of(
-                UserAgents.CONJURE_AGENT_NAME,
-                maybeRemotingVersion != null ? maybeRemotingVersion : "0.0.0"));
+                UserAgents.CONJURE_AGENT_NAME, maybeRemotingVersion != null ? maybeRemotingVersion : "0.0.0"));
         return augmentedAgent;
     }
 
@@ -274,11 +251,11 @@ public final class OkHttpClients {
         return ImmutableList.of(
                 new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
                         .tlsVersions(TlsVersion.TLS_1_2)
-                        .cipherSuites(enableGcmCipherSuites
-                                ? CipherSuites.allCipherSuites()
-                                : CipherSuites.fastCipherSuites())
+                        .cipherSuites(
+                                enableGcmCipherSuites
+                                        ? CipherSuites.allCipherSuites()
+                                        : CipherSuites.fastCipherSuites())
                         .build(),
                 ConnectionSpec.CLEARTEXT);
     }
-
 }

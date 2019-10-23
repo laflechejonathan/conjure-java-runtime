@@ -50,11 +50,10 @@ public final class IoExceptionResponseHandlerTest {
     public void extractsIoExceptionForAllErrorCodes() {
         for (int code : ImmutableList.of(300, 400, 404, 500)) {
             IOException exception = decode(MediaType.APPLICATION_JSON, code, "body").get();
-            assertThat(exception.getMessage()).isEqualTo(
-                    "Failed to parse response body as SerializableError: "
-                            + "{code="
-                            + code
-                            + ", body=body, contentType=application/json}");
+            assertThat(exception.getMessage()).isEqualTo("Failed to parse response body as SerializableError: "
+                    + "{code="
+                    + code
+                    + ", body=body, contentType=application/json}");
         }
     }
 
